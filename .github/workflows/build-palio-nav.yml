@@ -1,0 +1,105 @@
+name: Build Palio Nav Offline APK
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout Palio Nav builder
+        uses: actions/checkout@v7
+
+      - name: Checkout OsmAnd
+        uses: actions/checkout@v7
+        with:
+          repository: osmandapp/OsmAnd
+          path: android
+
+      - name: Checkout OsmAnd resources
+        uses: actions/checkout@v7
+        with:
+          repository: osmandapp/OsmAnd-resources
+          path: resources
+
+      - name: Checkout OsmAnd core
+        uses: actions/checkout@v7
+        with:
+          repository: osmandapp/OsmAnd-core
+          path: core
+
+      - name: Checkout OsmAnd legacy core
+        uses: actions/checkout@v7
+        with:
+          repository: osmandapp/OsmAnd-core-legacy
+          path: core-legacy
+
+      - name: Checkout OsmAnd build tools
+        uses: actions/checkout@v7
+        with:
+          repository: osmandapp/OsmAnd-build
+          path: build
+
+      - name: Checkout OsmAnd tools
+        uses: actions/checkout@v7
+        with:
+          repository: osmandapp/OsmAnd-tools
+          path: tools
+
+      - name: Checkout OsmAnd misc
+        uses: actions/checkout@v7
+        with:
+          repository: osmandapp/OsmAnd-misc
+          path: misc
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+          cache-dependency-path: android/**/*.gradle*
+
+      - name: Patch app for Palio multimedia
+        shell: bash
+        run: |
+          MAP_VERSION="$(date -u +%Y%m%d)-${GITHUB_RUN_NUMBER}"
+          python3 scripts/patch_osmand.py android "$MAP_VERSION"
+
+      - name: Download all Turkey offline maps
+        shell: bash
+        run: scripts/download_turkey_maps.sh android
+
+      - name: Configure Gradle memory
+        shell: bash
+        run: |
+          chmod +x android/gradlew
+          printf '\norg.gradle.jvmargs=-Xmx5g -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8\n' >> android/gradle.properties
+
+      - name: Build ARM 32/64 universal APK
+        working-directory: android
+        shell: bash
+        run: ./gradlew :OsmAnd:assembleNightlyFreeLegacyArmonlyDebug --no-daemon --stacktrace
+
+      - name: Prepare APK
+        shell: bash
+        run: |
+          mkdir -p output
+          APK="$(find android/OsmAnd/build/outputs/apk -type f -name '*.apk' | head -n 1)"
+          test -n "$APK"
+          cp "$APK" output/PalioNav-Offline-Turkiye.apk
+          sha256sum output/PalioNav-Offline-Turkiye.apk > output/PalioNav-Offline-Turkiye.sha256
+          ls -lh output/
+
+      - name: Upload install package
+        uses: actions/upload-artifact@v7
+        with:
+          name: PalioNav-Offline-Turkiye
+          path: output/*
+          retention-days: 30
+          compression-level: 0
