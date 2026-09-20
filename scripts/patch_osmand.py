@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import re
 import sys
 
 if len(sys.argv) < 2:
@@ -35,29 +36,73 @@ if resources.exists():
 
 manifest = osmand / "AndroidManifest.xml"
 text = manifest.read_text(encoding="utf-8")
-text = text.replace('android:screenOrientation="unspecified" android:launchMode="singleTask"',
-                    'android:screenOrientation="landscape" android:launchMode="singleTask"', 1)
-launcher = '''\n<intent-filter>\n<action android:name="android.intent.action.MAIN" />\n<category android:name="android.intent.category.LAUNCHER" />\n<category android:name="android.intent.category.MULTIWINDOW_LAUNCHER" />\n<category android:name="android.intent.category.APP_MAPS" />\n</intent-filter>\n'''
-if launcher not in text:
-    raise SystemExit("Could not find MapActivity launcher intent filter; upstream manifest changed")
-text = text.replace(launcher, "\n", 1)
-needle = '<activity android:name="net.osmand.plus.activities.MapActivity"'
-bootstrap = '''<activity android:name="net.osmand.plus.activities.PalioBootstrapActivity"
-android:label="Palio Nav"
-android:theme="@style/FirstSplashScreenPlus"
-android:screenOrientation="landscape"
-android:exported="true">
-<intent-filter>
-<action android:name="android.intent.action.MAIN" />
-<category android:name="android.intent.category.LAUNCHER" />
-<category android:name="android.intent.category.APP_MAPS" />
-</intent-filter>
-</activity>
 
-'''
-if needle not in text:
+# Patch MapActivity structurally instead of depending on exact indentation.
+activity_marker = '<activity android:name="net.osmand.plus.activities.MapActivity"'
+activity_start = text.find(activity_marker)
+if activity_start < 0:
     raise SystemExit("Could not find MapActivity declaration; upstream manifest changed")
-text = text.replace(needle, bootstrap + needle, 1)
+activity_open_end = text.find(">", activity_start)
+activity_end = text.find("</activity>", activity_open_end)
+if activity_open_end < 0 or activity_end < 0:
+    raise SystemExit("Could not parse MapActivity declaration; upstream manifest changed")
+
+open_tag = text[activity_start:activity_open_end + 1]
+if 'android:screenOrientation=' in open_tag:
+    patched_tag, count = re.subn(
+        r'android:screenOrientation="[^"]*"',
+        'android:screenOrientation="landscape"',
+        open_tag,
+        count=1,
+    )
+    if count != 1:
+        raise SystemExit("Could not force landscape orientation")
+else:
+    patched_tag = open_tag[:-1] + ' android:screenOrientation="landscape">'
+text = text[:activity_start] + patched_tag + text[activity_open_end + 1:]
+
+# Re-locate after modifying the opening tag.
+activity_start = text.find(activity_marker)
+activity_open_end = text.find(">", activity_start)
+activity_end = text.find("</activity>", activity_open_end)
+map_activity = text[activity_start:activity_end + len("</activity>")]
+launcher_pattern = re.compile(
+    r'\n[ \t]*<intent-filter>\s*'
+    r'<action android:name="android\.intent\.action\.MAIN"\s*/>\s*'
+    r'<category android:name="android\.intent\.category\.LAUNCHER"\s*/>\s*'
+    r'(?:<category android:name="android\.intent\.category\.MULTIWINDOW_LAUNCHER"\s*/>\s*)?'
+    r'(?:<category android:name="android\.intent\.category\.APP_MAPS"\s*/>\s*)?'
+    r'</intent-filter>\s*',
+    re.MULTILINE,
+)
+map_activity, launcher_count = launcher_pattern.subn("\n", map_activity, count=1)
+if launcher_count != 1:
+    raise SystemExit("Could not find MapActivity launcher intent filter; upstream manifest changed")
+text = text[:activity_start] + map_activity + text[activity_end + len("</activity>"):]
+
+# Avoid a provider authority collision if regular OsmAnd is also installed.
+text = text.replace(
+    'android:authorities="net.osmand.plus.fileprovider"',
+    'android:authorities="${applicationId}.fileprovider"',
+    1,
+)
+
+# Make our bootstrapper the launcher.
+activity_start = text.find(activity_marker)
+bootstrap = '''<activity android:name="net.osmand.plus.activities.PalioBootstrapActivity"
+\t\t\tandroid:label="@string/app_name"
+\t\t\tandroid:theme="@style/FirstSplashScreenPlus"
+\t\t\tandroid:screenOrientation="landscape"
+\t\t\tandroid:exported="true">
+\t\t\t<intent-filter>
+\t\t\t\t<action android:name="android.intent.action.MAIN" />
+\t\t\t\t<category android:name="android.intent.category.LAUNCHER" />
+\t\t\t\t<category android:name="android.intent.category.APP_MAPS" />
+\t\t\t</intent-filter>
+\t\t</activity>
+
+\t\t'''
+text = text[:activity_start] + bootstrap + text[activity_start:]
 manifest.write_text(text, encoding="utf-8")
 
 java_dir = osmand / "src/net/osmand/plus/activities"
@@ -276,7 +321,12 @@ public class PalioBootstrapActivity extends Activity {{
     }}
 
     private void openMap() {{
-        startActivity(new Intent(this, MapActivity.class));
+        OsmandApplication app = (OsmandApplication) getApplication();
+        app.getSettings().SHOW_OSMAND_WELCOME_SCREEN.set(false);
+        app.getSettings().MAP_SCREEN_ORIENTATION.set(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+        Intent intent = new Intent(this, MapActivity.class);
+        intent.putExtra("show_osmand_welcome_screen", false);
+        startActivity(intent);
         finish();
     }}
 }}

@@ -56,3 +56,7 @@ Workflow tekrar çalıştırıldığında aynı OsmAnd indirme adlarından o gü
 ## Lisans
 
 Bu builder OsmAnd kaynağını derleme sırasında resmi `osmandapp` GitHub depolarından alır. OsmAnd kodu GPLv3 kapsamındadır; bazı görsel kaynakların ayrıca lisans koşulları vardır. OpenStreetMap verisi ODbL lisansına tabidir. Bu nedenle türev dağıtımlarda gerekli OsmAnd/OpenStreetMap atıfları korunmalıdır. Bu paket özel/sideload kullanım hedefiyle hazırlanmıştır.
+
+## Builder v2 notu
+
+OsmAnd manifestindeki launcher intent-filter satir girintileri degisse bile `scripts/patch_osmand.py` artik esnek desenle MapActivity launcher filtresini bulur. Palio Nav bootstrap activity launcher olarak atanir, OsmAnd ilk kullanim indirme ekrani kapatilir ve yatay ekran tercihi ilk acilista ayarlanir.
