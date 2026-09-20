@@ -55,12 +55,17 @@ Workflow tekrar çalıştırıldığında aynı OsmAnd indirme adlarından o gü
 
 ## Lisans
 
-Bu builder OsmAnd kaynağını derleme sırasında resmi `osmandapp` GitHub depolarından alır. OsmAnd kodu GPLv3 kapsamındadır; bazı görsel kaynakların ayrıca lisans koşulları vardır. OpenStreetMap verisi ODbL lisansına tabidir. Bu nedenle türev dağıtımlarda gerekli OsmAnd/OpenStreetMap atıfları korunmalıdır. Bu paket özel/sideload kullanım hedefiyle hazırlanmıştır.
+Bu builder OsmAnd kaynağını derleme sırasında resmi `osmandapp` GitHub depolarından alır. OsmAnd kodu GPLv4 kapsamındadır; bazı görsel kaynakların ayrıca lisans koşulları vardır. OpenStreetMap verisi ODbL lisansına tabidir. Bu nedenle türev dağıtımlarda gerekli OsmAnd/OpenStreetMap atıfları korunmalıdır. Bu paket özel/sideload kullanım hedefiyle hazırlanmıştır.
 
 ## Builder v2 notu
 
 OsmAnd manifestindeki launcher intent-filter satir girintileri degisse bile `scripts/patch_osmand.py` artik esnek desenle MapActivity launcher filtresini bulur. Palio Nav bootstrap activity launcher olarak atanir, OsmAnd ilk kullanim indirme ekrani kapatilir ve yatay ekran tercihi ilk acilista ayarlanir.
 
-## v3 düzeltmesi
+## v4 düzeltmesi
 
-v1/v2 sürümlerindeki launcher `intent-filter` metnini değiştirme yöntemi kaldırıldı. v3, OsmAnd `MapActivity` launcher tanımına hiç dokunmaz. İlk çalıştırmada `MapActivity` güvenli şekilde yerel harita kurulum ekranına yönlendirir; 7 Türkiye haritası çıkarıldıktan sonra uygulama yeniden başlatılır. Bu yüzden upstream manifest girintisi/kategori sırası değişse bile önceki hata oluşmaz.
+v1/v2 sürümlerindeki launcher `intent-filter` metnini değiştirme yöntemi kaldırıldı. v4, OsmAnd `MapActivity` launcher tanımına hiç dokunmaz. İlk çalıştırmada `MapActivity` güvenli şekilde yerel harita kurulum ekranına yönlendirir; 7 Türkiye haritası çıkarıldıktan sonra uygulama yeniden başlatılır. Bu yüzden upstream manifest girintisi/kategori sırası değişse bile önceki hata oluşmaz.
+
+
+## v4 düzeltmesi
+
+GitHub Actions içindeki harita indirme scripti artık `bash scripts/download_turkey_maps.sh android` ile çağrılır. Böylece GitHub'a ZIP üzerinden yükleme sırasında executable biti kaybolsa bile `Permission denied` hatası oluşmaz. Ayrıca ilk kurulum kodundaki gereksiz çift `closeEntry()` kaldırıldı.

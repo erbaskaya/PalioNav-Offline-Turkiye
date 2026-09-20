@@ -73,7 +73,7 @@ jobs:
 
       - name: Download all Turkey offline maps
         shell: bash
-        run: scripts/download_turkey_maps.sh android
+        run: bash scripts/download_turkey_maps.sh android
 
       - name: Configure Gradle memory
         shell: bash

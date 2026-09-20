@@ -339,7 +339,7 @@ public class PalioBootstrapActivity extends Activity {{
 }}
 ''', encoding="utf-8")
 
-print("Patched OsmAnd for Palio Nav v3")
+print("Patched OsmAnd for Palio Nav v4")
 print("Launcher intent-filter left untouched")
 print("MapActivity first-run gate installed")
 print("Map bundle version:", map_version)
