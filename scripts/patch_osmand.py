@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 from pathlib import Path
-import re
 import sys
 
 if len(sys.argv) < 2:
@@ -10,108 +9,109 @@ root = Path(sys.argv[1]).resolve()
 map_version = sys.argv[2] if len(sys.argv) > 2 else "2026-09"
 osmand = root / "OsmAnd"
 
+
+def require_replace(text: str, old: str, new: str, label: str, count: int = 1) -> str:
+    if old not in text:
+        raise SystemExit(f"Could not patch {label}; upstream source changed")
+    return text.replace(old, new, count)
+
+
+# 1) Brand the nightly build that our workflow compiles.
 build = osmand / "build.gradle"
 text = build.read_text(encoding="utf-8")
-text = text.replace('applicationId "net.osmand.dev"', 'applicationId "com.baskaya.palionav"', 1)
-text = text.replace('resValue "string", "app_name", "OsmAnd Nightly"', 'resValue "string", "app_name", "Palio Nav"', 1)
+text = require_replace(
+    text,
+    'applicationId "net.osmand.dev"',
+    'applicationId "com.baskaya.palionav"',
+    "nightly applicationId",
+)
+text = require_replace(
+    text,
+    'resValue "string", "app_name", "OsmAnd Nightly"',
+    'resValue "string", "app_name", "Palio Nav"',
+    "app name",
+)
 build.write_text(text, encoding="utf-8")
 
+# Keep the already-compressed OBF zip assets stored instead of compressing them again.
 common = osmand / "build-common.gradle"
 text = common.read_text(encoding="utf-8")
-text = text.replace('noCompress "qz"', 'noCompress "qz", "zip"', 1)
+if 'noCompress "qz", "zip"' not in text:
+    text = require_replace(text, 'noCompress "qz"', 'noCompress "qz", "zip"', "APK noCompress")
 common.write_text(text, encoding="utf-8")
 
-
+# Make Turkish TTS rules available by default when OsmAnd resources are merged.
 resources = root.parent / "resources" / "bundled_assets.json"
 if resources.exists():
     rtext = resources.read_text(encoding="utf-8")
-    tr_block_old = """{
+    old = '''{
             "source": "voice/tr/tr_tts.js",
             "destination": "voice/tr-tts/tr_tts.js",
             "mode": "overwriteOnlyIfExists"
-        }"""
-    tr_block_new = tr_block_old.replace("overwriteOnlyIfExists", "alwaysOverwriteOrCopy")
-    rtext = rtext.replace(tr_block_old, tr_block_new, 1)
-    resources.write_text(rtext, encoding="utf-8")
+        }'''
+    new = old.replace("overwriteOnlyIfExists", "alwaysOverwriteOrCopy")
+    if old in rtext:
+        rtext = rtext.replace(old, new, 1)
+        resources.write_text(rtext, encoding="utf-8")
 
+# 2) Manifest: DO NOT touch OsmAnd's launcher intent-filter anymore.
+# v1/v2 failed because they depended on the exact upstream launcher block.
 manifest = osmand / "AndroidManifest.xml"
 text = manifest.read_text(encoding="utf-8")
 
-# Patch MapActivity structurally instead of depending on exact indentation.
-activity_marker = '<activity android:name="net.osmand.plus.activities.MapActivity"'
-activity_start = text.find(activity_marker)
-if activity_start < 0:
-    raise SystemExit("Could not find MapActivity declaration; upstream manifest changed")
-activity_open_end = text.find(">", activity_start)
-activity_end = text.find("</activity>", activity_open_end)
-if activity_open_end < 0 or activity_end < 0:
-    raise SystemExit("Could not parse MapActivity declaration; upstream manifest changed")
-
-open_tag = text[activity_start:activity_open_end + 1]
-if 'android:screenOrientation=' in open_tag:
-    patched_tag, count = re.subn(
-        r'android:screenOrientation="[^"]*"',
+# Force the normal map activity to landscape for the car multimedia screen.
+if 'android:screenOrientation="landscape"' not in text:
+    text = require_replace(
+        text,
+        'android:screenOrientation="unspecified"',
         'android:screenOrientation="landscape"',
-        open_tag,
-        count=1,
+        "MapActivity landscape orientation",
     )
-    if count != 1:
-        raise SystemExit("Could not force landscape orientation")
-else:
-    patched_tag = open_tag[:-1] + ' android:screenOrientation="landscape">'
-text = text[:activity_start] + patched_tag + text[activity_open_end + 1:]
 
-# Re-locate after modifying the opening tag.
-activity_start = text.find(activity_marker)
-activity_open_end = text.find(">", activity_start)
-activity_end = text.find("</activity>", activity_open_end)
-map_activity = text[activity_start:activity_end + len("</activity>")]
-launcher_pattern = re.compile(
-    r'\n[ \t]*<intent-filter>\s*'
-    r'<action android:name="android\.intent\.action\.MAIN"\s*/>\s*'
-    r'<category android:name="android\.intent\.category\.LAUNCHER"\s*/>\s*'
-    r'(?:<category android:name="android\.intent\.category\.MULTIWINDOW_LAUNCHER"\s*/>\s*)?'
-    r'(?:<category android:name="android\.intent\.category\.APP_MAPS"\s*/>\s*)?'
-    r'</intent-filter>\s*',
-    re.MULTILINE,
-)
-map_activity, launcher_count = launcher_pattern.subn("\n", map_activity, count=1)
-if launcher_count != 1:
-    raise SystemExit("Could not find MapActivity launcher intent filter; upstream manifest changed")
-text = text[:activity_start] + map_activity + text[activity_end + len("</activity>"):]
-
-# Avoid a provider authority collision if regular OsmAnd is also installed.
+# Avoid authority collision if another OsmAnd variant exists on the device.
 text = text.replace(
     'android:authorities="net.osmand.plus.fileprovider"',
     'android:authorities="${applicationId}.fileprovider"',
     1,
 )
 
-# Make our bootstrapper the launcher.
-activity_start = text.find(activity_marker)
-bootstrap = '''<activity android:name="net.osmand.plus.activities.PalioBootstrapActivity"
+activity_marker = '<activity android:name="net.osmand.plus.activities.MapActivity"'
+activity_pos = text.find(activity_marker)
+if activity_pos < 0:
+    raise SystemExit("Could not find MapActivity declaration; upstream manifest changed")
+
+bootstrap_decl = '''<activity android:name="net.osmand.plus.activities.PalioBootstrapActivity"
 \t\t\tandroid:label="@string/app_name"
 \t\t\tandroid:theme="@style/FirstSplashScreenPlus"
 \t\t\tandroid:screenOrientation="landscape"
-\t\t\tandroid:exported="true">
-\t\t\t<intent-filter>
-\t\t\t\t<action android:name="android.intent.action.MAIN" />
-\t\t\t\t<category android:name="android.intent.category.LAUNCHER" />
-\t\t\t\t<category android:name="android.intent.category.APP_MAPS" />
-\t\t\t</intent-filter>
-\t\t</activity>
+\t\t\tandroid:exported="false" />
 
 \t\t'''
-text = text[:activity_start] + bootstrap + text[activity_start:]
+if 'android:name="net.osmand.plus.activities.PalioBootstrapActivity"' not in text:
+    text = text[:activity_pos] + bootstrap_decl + text[activity_pos:]
 manifest.write_text(text, encoding="utf-8")
 
+# 3) Put a very small gate into MapActivity. MapActivity remains the launcher.
+# On the very first run it opens our installer activity, which extracts the seven
+# embedded Turkey OBF packages in a background thread, then restarts OsmAnd.
+map_activity_file = osmand / "src/net/osmand/plus/activities/MapActivity.java"
+map_text = map_activity_file.read_text(encoding="utf-8")
+gate = '''\n\t\tif (PalioBootstrapActivity.needsMapInstall(this)) {\n\t\t\tstartActivity(new android.content.Intent(this, PalioBootstrapActivity.class));\n\t\t\tfinish();\n\t\t\treturn;\n\t\t}\n'''
+if "PalioBootstrapActivity.needsMapInstall(this)" not in map_text:
+    anchor = '\t\tsuper.onCreate(savedInstanceState);\n'
+    if anchor not in map_text:
+        raise SystemExit("Could not patch MapActivity onCreate; upstream source changed")
+    map_text = map_text.replace(anchor, anchor + gate, 1)
+    map_activity_file.write_text(map_text, encoding="utf-8")
+
+# 4) First-run map installer.
 java_dir = osmand / "src/net/osmand/plus/activities"
 java_dir.mkdir(parents=True, exist_ok=True)
 java = java_dir / "PalioBootstrapActivity.java"
 java.write_text(f'''package net.osmand.plus.activities;
 
 import android.app.Activity;
-import android.content.Intent;
+import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
 import android.content.res.AssetManager;
@@ -139,17 +139,36 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
 /**
- * Palio Nav first-run bootstrapper.
- * Installs the Turkey OBF map packages bundled in assets/palio_maps and then
- * restarts OsmAnd so the normal resource scanner sees every map offline.
+ * First-run installer for the Turkey map bundle embedded in the Palio Nav APK.
+ * The normal OsmAnd MapActivity remains the launcher; it redirects here only
+ * until all seven OBF files have been installed.
  */
 public class PalioBootstrapActivity extends Activity {{
     private static final String PREFS = "palionav_bootstrap";
     private static final String KEY_VERSION = "installed_map_bundle";
     private static final String MAP_BUNDLE_VERSION = "{map_version}";
+    private static final int EXPECTED_MAP_COUNT = 7;
 
     private TextView status;
     private ProgressBar progress;
+
+    public static boolean needsMapInstall(Context context) {{
+        SharedPreferences prefs = context.getSharedPreferences(PREFS, MODE_PRIVATE);
+        if (!MAP_BUNDLE_VERSION.equals(prefs.getString(KEY_VERSION, ""))) {{
+            return true;
+        }}
+        try {{
+            OsmandApplication app = (OsmandApplication) context.getApplicationContext();
+            File root = app.getAppPath(null);
+            File[] maps = root.listFiles((dir, name) -> {{
+                String n = name.toLowerCase(Locale.ROOT);
+                return n.startsWith("turkey_") && n.endsWith(".obf");
+            }});
+            return maps == null || maps.length < EXPECTED_MAP_COUNT;
+        }} catch (Exception e) {{
+            return true;
+        }}
+    }}
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {{
@@ -163,11 +182,11 @@ public class PalioBootstrapActivity extends Activity {{
                 View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
         setContentView(buildUi());
 
-        if (mapsAlreadyInstalled()) {{
-            openMap();
-        }} else {{
-            new Thread(this::installBundledMaps, "palio-map-installer").start();
+        if (!needsMapInstall(this)) {{
+            restartIntoMap();
+            return;
         }}
+        new Thread(this::installBundledMaps, "palio-map-installer").start();
     }}
 
     private View buildUi() {{
@@ -201,7 +220,7 @@ public class PalioBootstrapActivity extends Activity {{
         root.addView(progress, pp);
 
         status = new TextView(this);
-        status.setText("Çevrimdışı haritalar hazırlanıyor…");
+        status.setText("Çevrimdışı Türkiye haritası hazırlanıyor…");
         status.setTextColor(Color.WHITE);
         status.setTextSize(18);
         status.setGravity(Gravity.CENTER);
@@ -210,7 +229,7 @@ public class PalioBootstrapActivity extends Activity {{
         root.addView(status, tp);
 
         TextView note = new TextView(this);
-        note.setText("İlk kurulum sırasında ekranı kapatmayın. İnternet bağlantısı kullanılmaz.");
+        note.setText("İlk kurulumda yaklaşık 1 GB harita cihaz içine hazırlanır. İnternet kullanılmaz.");
         note.setTextColor(Color.rgb(145, 160, 175));
         note.setTextSize(14);
         note.setGravity(Gravity.CENTER);
@@ -218,17 +237,6 @@ public class PalioBootstrapActivity extends Activity {{
         np.topMargin = 18;
         root.addView(note, np);
         return root;
-    }}
-
-    private boolean mapsAlreadyInstalled() {{
-        SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
-        if (!MAP_BUNDLE_VERSION.equals(prefs.getString(KEY_VERSION, ""))) {{
-            return false;
-        }}
-        File root = ((OsmandApplication) getApplication()).getAppPath(null);
-        File[] maps = root.listFiles((dir, name) -> name.toLowerCase(Locale.ROOT).startsWith("turkey_")
-                && name.toLowerCase(Locale.ROOT).endsWith(".obf"));
-        return maps != null && maps.length >= 7;
     }}
 
     private void installBundledMaps() {{
@@ -243,12 +251,13 @@ public class PalioBootstrapActivity extends Activity {{
             for (String f : files) {{
                 if (f.endsWith(".obf.zip")) total++;
             }}
-            if (total < 7) {{
-                throw new IOException("Turkey map bundle is incomplete: " + total + "/7");
+            if (total < EXPECTED_MAP_COUNT) {{
+                throw new IOException("Turkey map bundle is incomplete: " + total + "/" + EXPECTED_MAP_COUNT);
             }}
             final int mapCount = total;
 
-            File targetRoot = ((OsmandApplication) getApplication()).getAppPath(null);
+            OsmandApplication app = (OsmandApplication) getApplication();
+            File targetRoot = app.getAppPath(null);
             if (!targetRoot.exists() && !targetRoot.mkdirs()) {{
                 throw new IOException("Cannot create map directory: " + targetRoot);
             }}
@@ -261,6 +270,7 @@ public class PalioBootstrapActivity extends Activity {{
                     status.setText("Türkiye haritası hazırlanıyor " + index + "/" + mapCount);
                     progress.setProgress(Math.max(1, (index - 1) * 100 / mapCount));
                 }});
+
                 try (InputStream raw = assets.open("palio_maps/" + f, AssetManager.ACCESS_STREAMING);
                      ZipInputStream zin = new ZipInputStream(new BufferedInputStream(raw, 1024 * 256))) {{
                     ZipEntry entry;
@@ -291,18 +301,21 @@ public class PalioBootstrapActivity extends Activity {{
                 runOnUiThread(() -> progress.setProgress(pct));
             }}
 
+            app.getSettings().SHOW_OSMAND_WELCOME_SCREEN.set(false);
+            app.getSettings().MAP_SCREEN_ORIENTATION.set(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
             getSharedPreferences(PREFS, MODE_PRIVATE).edit()
                     .putString(KEY_VERSION, MAP_BUNDLE_VERSION)
-                    .apply();
+                    .commit();
+
             runOnUiThread(() -> {{
                 status.setText("Hazır. Navigasyon açılıyor…");
                 progress.setProgress(100);
             }});
             try {{ Thread.sleep(350); }} catch (InterruptedException ignored) {{ }}
-            runOnUiThread(() -> RestartActivity.doRestartSilent(this));
+            runOnUiThread(this::restartIntoMap);
         }} catch (Exception e) {{
             runOnUiThread(() -> {{
-                status.setText("Kurulum hatası: " + e.getMessage() + "\nCihazda en az 3 GB boş alan olduğundan emin olun.");
+                status.setText("Kurulum hatası: " + e.getMessage() + "\\nCihazda en az 3 GB boş alan olduğundan emin olun.");
                 status.setTextColor(Color.rgb(255, 130, 130));
                 progress.setVisibility(View.GONE);
             }});
@@ -320,17 +333,13 @@ public class PalioBootstrapActivity extends Activity {{
         }}
     }}
 
-    private void openMap() {{
-        OsmandApplication app = (OsmandApplication) getApplication();
-        app.getSettings().SHOW_OSMAND_WELCOME_SCREEN.set(false);
-        app.getSettings().MAP_SCREEN_ORIENTATION.set(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
-        Intent intent = new Intent(this, MapActivity.class);
-        intent.putExtra("show_osmand_welcome_screen", false);
-        startActivity(intent);
-        finish();
+    private void restartIntoMap() {{
+        RestartActivity.doRestartSilent(this);
     }}
 }}
 ''', encoding="utf-8")
 
-print("Patched OsmAnd for Palio Nav")
+print("Patched OsmAnd for Palio Nav v3")
+print("Launcher intent-filter left untouched")
+print("MapActivity first-run gate installed")
 print("Map bundle version:", map_version)
