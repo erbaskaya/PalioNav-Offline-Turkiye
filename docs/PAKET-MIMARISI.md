@@ -1,16 +1,14 @@
-# Palio Nav paket mimarisi
+# Palio Nav v5 package architecture
 
-## Tek dosyalı kullanım
+Build base: OsmAnd r5.4 release branch, androidFull + legacy renderer, ARMv7 + ARM64.
 
-Son kullanıcı yalnızca `PalioNav-Offline-Turkiye.apk` dosyasını görür. Türkiye haritaları APK'nın `assets/palio_maps/` bölümünde yedi `.obf.zip` dosyası olarak taşınır.
+Startup flow:
 
-İlk açılışta `PalioBootstrapActivity`:
+1. Android starts OsmandApplication.
+2. PalioBootstrapActivity is the launcher.
+3. On first run it extracts seven embedded Turkey OBF packages to OsmAnd storage.
+4. PalioRestartActivity runs in the existing `:restart` process, kills the first main process and opens MapActivity in a fresh process.
+5. OsmAnd indexes the already-installed maps during normal startup.
+6. Later launches pass through the lightweight bootstrap and immediately open MapActivity.
 
-1. APK içindeki map paketlerini listeler.
-2. Her ZIP içindeki `.obf` dosyasını OsmAnd uygulama veri köküne çıkarır.
-3. Yarım kalan dosyaları `.part` uzantısıyla tutar; dosya tamamlanınca atomik olarak gerçek adına çevirir.
-4. Yedi bölgenin kurulumu tamamlanınca harita paket sürümünü SharedPreferences'a yazar.
-5. Uygulamayı sessizce yeniden başlatır.
-6. Sonraki açılışlarda kurulum ekranını atlayıp doğrudan `MapActivity` açar.
-
-Bu yöntemle kullanıcının ayrıca klasör kopyalaması, harita indirmesi veya internet bağlantısı sağlaması gerekmez.
+This avoids opening the full map UI while the offline data set is still absent or half-installed.

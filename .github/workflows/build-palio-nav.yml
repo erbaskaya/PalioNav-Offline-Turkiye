@@ -15,34 +15,39 @@ jobs:
       - name: Checkout Palio Nav builder
         uses: actions/checkout@v7
 
-      - name: Checkout OsmAnd
+      - name: Checkout OsmAnd stable 5.4 branch
         uses: actions/checkout@v7
         with:
           repository: osmandapp/OsmAnd
+          ref: r5.4
           path: android
 
-      - name: Checkout OsmAnd resources
+      - name: Checkout OsmAnd resources 5.4
         uses: actions/checkout@v7
         with:
           repository: osmandapp/OsmAnd-resources
+          ref: r5.4
           path: resources
 
-      - name: Checkout OsmAnd core
+      - name: Checkout OsmAnd core 5.4
         uses: actions/checkout@v7
         with:
           repository: osmandapp/OsmAnd-core
+          ref: r5.4
           path: core
 
-      - name: Checkout OsmAnd legacy core
+      - name: Checkout OsmAnd legacy core 5.4
         uses: actions/checkout@v7
         with:
           repository: osmandapp/OsmAnd-core-legacy
+          ref: r5.4
           path: core-legacy
 
-      - name: Checkout OsmAnd build tools
+      - name: Checkout OsmAnd build tools 5.4
         uses: actions/checkout@v7
         with:
           repository: osmandapp/OsmAnd-build
+          ref: r5.4
           path: build
 
       - name: Checkout OsmAnd tools
@@ -84,7 +89,7 @@ jobs:
       - name: Build ARM 32/64 universal APK
         working-directory: android
         shell: bash
-        run: ./gradlew :OsmAnd:assembleNightlyFreeLegacyArmonlyDebug --no-daemon --stacktrace
+        run: ./gradlew :OsmAnd:assembleAndroidFullLegacyArmonlyDebug --no-daemon --stacktrace
 
       - name: Prepare APK
         shell: bash
@@ -99,7 +104,7 @@ jobs:
       - name: Upload install package
         uses: actions/upload-artifact@v7
         with:
-          name: PalioNav-Offline-Turkiye
+          name: PalioNav-Offline-Turkiye-v5
           path: output/*
           retention-days: 30
           compression-level: 0
