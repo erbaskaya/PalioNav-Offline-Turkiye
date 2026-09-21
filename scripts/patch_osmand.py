@@ -17,14 +17,15 @@ def require_replace(text: str, old: str, new: str, label: str, count: int = 1) -
     return text.replace(old, new, count)
 
 
-def flavor_block(text: str, flavor: str) -> tuple[int, int, str]:
-    marker = f"\t\t{flavor} {{"
-    start = text.find(marker)
-    if start < 0:
-        marker = f"        {flavor} {{"
-        start = text.find(marker)
-    if start < 0:
+def flavor_block(text: str, flavor: str, search_from: int = 0) -> tuple[int, int, str]:
+    # Important: the same flavor name also appears under sourceSets.
+    # Search only from productFlavors onward so we patch the block that
+    # actually contains applicationId/resValue.
+    import re
+    m = re.search(r"(?m)^[ \t]*" + re.escape(flavor) + r"\s*\{", text[search_from:])
+    if not m:
         raise SystemExit(f"Could not find {flavor} flavor")
+    start = search_from + m.start()
     brace = text.find("{", start)
     depth = 0
     for i in range(brace, len(text)):
@@ -40,7 +41,10 @@ def flavor_block(text: str, flavor: str) -> tuple[int, int, str]:
 # 1) Use the Android full flavor as the production-like base, not the nightly flavor.
 build = osmand / "build.gradle"
 text = build.read_text(encoding="utf-8")
-start, end, block = flavor_block(text, "androidFull")
+product_flavors_pos = text.find("productFlavors")
+if product_flavors_pos < 0:
+    raise SystemExit("Could not find productFlavors block")
+start, end, block = flavor_block(text, "androidFull", product_flavors_pos)
 block = require_replace(block, 'applicationId "net.osmand.plus"', 'applicationId "com.baskaya.palionav"', "androidFull applicationId")
 block = require_replace(block, 'resValue "string", "app_name", "OsmAnd~"', 'resValue "string", "app_name", "Palio Nav"', "androidFull app name")
 text = text[:start] + block + text[end:]
@@ -415,7 +419,7 @@ public class PalioRestartActivity extends Activity {
 }
 ''', encoding="utf-8")
 
-print("Patched OsmAnd r5.4 for Palio Nav v5")
+print("Patched OsmAnd r5.4 for Palio Nav v6")
 print("Production-like androidFull flavor selected")
 print("Bootstrap is the launcher; MapActivity starts only after map install")
 print("Fresh-process restart helper installed")

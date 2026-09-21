@@ -1,10 +1,12 @@
-# Palio Nav Offline Builder v5
+# Palio Nav Offline Builder v6
+
+> v6: r5.4 kaynaklarinda `androidFull` hem `sourceSets` hem `productFlavors` altinda bulundugu icin olusan patch hatasi duzeltildi. Uygulama kimligi artik dogru `productFlavors/androidFull` blogunda degistirilir.
 
 This build is for an Android car multimedia unit and contains all Turkey offline map packages in the APK.
 
-## Why v5
+## Why v6
 
-v4 built successfully but could crash immediately on some multimedia units. v5 changes the startup architecture:
+v4 built successfully but could crash immediately on some multimedia units. v6 changes the startup architecture:
 
 - Uses OsmAnd `r5.4` release branch instead of moving `master`/nightly sources.
 - Uses the `androidFull` flavor instead of `nightlyFree`.
@@ -19,16 +21,16 @@ v4 built successfully but could crash immediately on some multimedia units. v5 c
 1. Upload all files in this ZIP to the GitHub repository, replacing the old builder files.
 2. Open **Actions**.
 3. Run **Build Palio Nav Offline APK**.
-4. Download the artifact **PalioNav-Offline-Turkiye-v5**.
+4. Download the artifact **PalioNav-Offline-Turkiye-v6**.
 5. Extract the artifact ZIP and copy `PalioNav-Offline-Turkiye.apk` to USB.
 
 ## Important clean-install step
 
-Before testing v5 on the multimedia unit:
+Before testing v6 on the multimedia unit:
 
 1. Uninstall the old **Palio Nav**.
 2. Reboot the multimedia unit once.
-3. Install the v5 APK.
+3. Install the v6 APK.
 4. On first launch, wait for the Palio Nav map preparation screen to finish. Do not close the app during map extraction.
 
 The first run needs several GB of free internal storage because the APK itself and the extracted OBF maps coexist on the device.

@@ -104,7 +104,7 @@ jobs:
       - name: Upload install package
         uses: actions/upload-artifact@v7
         with:
-          name: PalioNav-Offline-Turkiye-v5
+          name: PalioNav-Offline-Turkiye-v6
           path: output/*
           retention-days: 30
           compression-level: 0

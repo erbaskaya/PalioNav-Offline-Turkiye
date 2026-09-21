@@ -1,4 +1,4 @@
-# Palio Nav v5 package architecture
+# Palio Nav v6 package architecture
 
 Build base: OsmAnd r5.4 release branch, androidFull + legacy renderer, ARMv7 + ARM64.
 
